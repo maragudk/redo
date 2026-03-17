@@ -28,6 +28,7 @@ type command struct {
 	pipe    *os.File
 
 	mu   sync.Mutex
+	wg   sync.WaitGroup
 	cmd  *exec.Cmd
 	done chan struct{}
 }
@@ -49,6 +50,9 @@ func (c *command) start() error {
 }
 
 func (c *command) startLocked() error {
+	// Wait for previous prefixLines goroutines to finish draining pipes.
+	c.wg.Wait()
+
 	// Close previous log file if any.
 	if c.logFile != nil {
 		_ = c.logFile.Close()
@@ -107,8 +111,15 @@ func (c *command) startLocked() error {
 
 	// Capture logFile reference for goroutines so they don't race with restart.
 	lf := c.logFile
-	go c.prefixLines(stdout, lf)
-	go c.prefixLines(stderr, lf)
+	c.wg.Add(2)
+	go func() {
+		c.prefixLines(stdout, lf)
+		c.wg.Done()
+	}()
+	go func() {
+		c.prefixLines(stderr, lf)
+		c.wg.Done()
+	}()
 
 	go func() {
 		_ = cmd.Wait()
@@ -177,6 +188,9 @@ func (c *command) stopLocked() {
 func (c *command) closeLog() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Wait for goroutines to finish draining pipes before closing the file.
+	c.wg.Wait()
 
 	if c.logFile != nil {
 		_ = c.logFile.Close()
