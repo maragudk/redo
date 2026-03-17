@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -19,6 +20,44 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "init":
+			return runInit()
+		default:
+			return fmt.Errorf("unknown command: %s", os.Args[1])
+		}
+	}
+
+	return runWatch()
+}
+
+func runInit() error {
+	const configFile = "redo.yaml"
+
+	if _, err := os.Stat(configFile); err == nil {
+		return errors.New(configFile + " already exists")
+	}
+
+	if err := os.WriteFile(configFile, []byte(sampleConfig), 0644); err != nil {
+		return err
+	}
+
+	fmt.Println("Created", configFile)
+	return nil
+}
+
+const sampleConfig = `commands:
+  - name: "app"
+    run: "go run ."
+    watch:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".env"
+`
+
+func runWatch() error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return err

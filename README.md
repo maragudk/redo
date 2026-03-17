@@ -17,26 +17,26 @@ go install maragu.dev/redo@latest
 
 ## Usage
 
-Create a `redo.yaml` in your project root:
+Generate a sample config file:
+
+```shell
+redo init
+```
+
+This creates a `redo.yaml` in the current directory:
 
 ```yaml
 commands:
-  - name: server
-    run: go run .
+  - name: "app"
+    run: "go run ."
     watch:
       - "**/*.go"
-      - go.mod
-      - go.sum
-      - .env
-
-  - name: tailwind
-    run: npx tailwindcss -i input.css -o static/styles.css
-    watch:
-      - "**/*.css"
-      - "**/*.html"
+      - "go.mod"
+      - "go.sum"
+      - ".env"
 ```
 
-Then run:
+Edit it to match your project, then run:
 
 ```shell
 redo
@@ -47,12 +47,29 @@ All commands start immediately. When a file matching a command's watch patterns 
 Output is prefixed with the command name:
 
 ```
-[redo] Starting server: go run .
-[redo] Starting tailwind: npx tailwindcss -i input.css -o static/styles.css
-[server] Listening on :8080
-[tailwind] Done in 120ms
-[redo] Restarting server (main.go changed)
-[server] Listening on :8080
+[redo] Starting app: go run .
+[app] Listening on :8080
+[redo] Restarting app (main.go changed)
+[app] Listening on :8080
+```
+
+### Multiple commands
+
+```yaml
+commands:
+  - name: "server"
+    run: "go run ."
+    watch:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".env"
+
+  - name: "tailwind"
+    run: "npx tailwindcss -i input.css -o static/styles.css"
+    watch:
+      - "**/*.css"
+      - "**/*.html"
 ```
 
 ## Features
