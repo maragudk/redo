@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"maragu.dev/redo"
+	"maragu.dev/redo/internal/redo"
 )
 
 func main() {
