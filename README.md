@@ -5,7 +5,9 @@
 
 A simple, robust file watcher that runs commands on changes. Like Air, but simpler and more reliable.
 
-Made with sparkles by [maragu](https://www.maragu.dev/): independent software consulting for cloud-native Go apps & AI engineering.
+⚠️ Entirely vibe-coded by an AI, but seems to work okay. :D ⚠️
+
+Made with ✨sparkles✨ by [maragu](https://www.maragu.dev/): independent software consulting for cloud-native Go apps & AI engineering.
 
 [Contact me at markus@maragu.dk](mailto:markus@maragu.dk) for consulting work, or perhaps an invoice to support this project?
 
