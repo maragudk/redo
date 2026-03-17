@@ -1,0 +1,12 @@
+commands:
+  - name: "lint"
+    run: "golangci-lint run"
+    watch:
+      - "**/*.go"
+
+  - name: "build"
+    run: "go build -o /dev/null ."
+    watch:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
