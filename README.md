@@ -12,7 +12,7 @@ Made with sparkles by [maragu](https://www.maragu.dev/): independent software co
 ## Install
 
 ```shell
-go install maragu.dev/redo/cmd/redo@latest
+go install maragu.dev/redo@latest
 ```
 
 ## Usage
