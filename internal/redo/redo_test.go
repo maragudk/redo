@@ -158,9 +158,9 @@ func TestRunner(t *testing.T) {
 			done <- r.Run(ctx)
 		}()
 
-		// sh -c starts fine, but the command inside fails and outputs to stderr
-		waitFor(t, &buf, "[broken]", 2*time.Second)
-		waitFor(t, &buf, "No such file or directory", 2*time.Second)
+		// sh -c starts fine, but the command inside fails and outputs to stderr.
+		// The error message varies by OS, so just check the prefix is there.
+		waitFor(t, &buf, "[broken] sh:", 2*time.Second)
 
 		cancel()
 		is.NotError(t, <-done)
