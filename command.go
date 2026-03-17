@@ -87,6 +87,14 @@ func (c *command) stopLocked() {
 		return
 	}
 
+	// Check if already exited before sending signals.
+	select {
+	case <-c.done:
+		c.cmd = nil
+		return
+	default:
+	}
+
 	pid := c.cmd.Process.Pid
 
 	// Send SIGTERM to the entire process group.
@@ -95,9 +103,13 @@ func (c *command) stopLocked() {
 	select {
 	case <-c.done:
 	case <-time.After(500 * time.Millisecond):
-		// Force kill if still alive.
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
-		<-c.done
+		// Check again before SIGKILL to avoid PID reuse.
+		select {
+		case <-c.done:
+		default:
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+			<-c.done
+		}
 	}
 
 	c.cmd = nil

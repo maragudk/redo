@@ -6,7 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -19,6 +20,7 @@ type Runner struct {
 	out      io.Writer
 	commands []*command
 	watcher  *fsnotify.Watcher
+	stopped  atomic.Bool
 }
 
 // New creates a Runner for the given directory and config.
@@ -26,12 +28,15 @@ func New(dir string, config Config, out io.Writer) *Runner {
 	return &Runner{
 		dir:    dir,
 		config: config,
-		out:    out,
+		out:    &syncWriter{w: out},
 	}
 }
 
 // Run starts all commands and watches for file changes until the context is cancelled.
 func (r *Runner) Run(ctx context.Context) error {
+	r.commands = nil
+	r.stopped.Store(false)
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
@@ -57,6 +62,12 @@ func (r *Runner) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			r.stopped.Store(true)
+			for _, timer := range timers {
+				if timer != nil {
+					timer.Stop()
+				}
+			}
 			r.stopAll()
 			return nil
 
@@ -71,7 +82,8 @@ func (r *Runner) Run(ctx context.Context) error {
 			// Watch newly created directories.
 			if event.Op&fsnotify.Create != 0 {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					if !shouldSkipDir(info.Name()) {
+					relPath, relErr := filepath.Rel(r.dir, event.Name)
+					if relErr == nil && !containsSkippedDir(relPath) {
 						_ = watcher.Add(event.Name)
 					}
 				}
@@ -91,6 +103,9 @@ func (r *Runner) Run(ctx context.Context) error {
 					name := cfg.Name
 					file := relPath
 					timers[idx] = time.AfterFunc(50*time.Millisecond, func() {
+						if r.stopped.Load() {
+							return
+						}
 						r.log("Restarting %s (%s changed)", name, file)
 						if err := r.commands[idx].restart(); err != nil {
 							r.log("Error restarting %s: %v", name, err)
@@ -122,21 +137,48 @@ func (r *Runner) stopAll() {
 func (r *Runner) addWatchDirs() error {
 	return filepath.WalkDir(r.dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			r.log("Warning: cannot access %s: %v", path, err)
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if d.IsDir() {
 			if shouldSkipDir(d.Name()) {
 				return filepath.SkipDir
 			}
-			return r.watcher.Add(path)
+			if err := r.watcher.Add(path); err != nil {
+				r.log("Warning: cannot watch %s: %v", path, err)
+				return nil
+			}
 		}
 		return nil
 	})
 }
 
 func shouldSkipDir(name string) bool {
-	if name == "." {
-		return false
+	return name == ".git" || name == "node_modules"
+}
+
+func containsSkippedDir(relPath string) bool {
+	dir := relPath
+	for dir != "." && dir != "" {
+		if shouldSkipDir(filepath.Base(dir)) {
+			return true
+		}
+		dir = filepath.Dir(dir)
 	}
-	return strings.HasPrefix(name, ".") || name == "node_modules"
+	return false
+}
+
+// syncWriter wraps an io.Writer with a mutex to make concurrent writes safe.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (sw *syncWriter) Write(p []byte) (int, error) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	return sw.w.Write(p)
 }

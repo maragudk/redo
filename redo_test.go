@@ -5,6 +5,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -140,18 +141,47 @@ func TestRunner(t *testing.T) {
 		cancel()
 		is.NotError(t, <-done)
 	})
+
+	t.Run("captures stderr from a command that fails", func(t *testing.T) {
+		dir := t.TempDir()
+
+		var buf syncBuf
+		r := redo.New(dir, redo.Config{
+			Commands: []redo.CommandConfig{
+				{Name: "broken", Run: "/nonexistent/binary/that/does/not/exist", Watch: []string{"**/*.go"}},
+			},
+		}, &buf)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() {
+			done <- r.Run(ctx)
+		}()
+
+		// sh -c starts fine, but the command inside fails and outputs to stderr
+		waitFor(t, &buf, "[broken]", 2*time.Second)
+		waitFor(t, &buf, "No such file or directory", 2*time.Second)
+
+		cancel()
+		is.NotError(t, <-done)
+	})
 }
 
 // syncBuf is a concurrency-safe buffer for test output.
 type syncBuf struct {
+	mu  sync.Mutex
 	buf bytes.Buffer
 }
 
 func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.buf.Write(p)
 }
 
 func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.buf.String()
 }
 

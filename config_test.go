@@ -97,6 +97,35 @@ commands:
 		_, err := redo.LoadConfig(filepath.Join(dir, "redo.yaml"))
 		is.True(t, err != nil)
 	})
+
+	t.Run("returns an error for duplicate command names", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "redo.yaml"), `
+commands:
+  - name: server
+    run: go run .
+    watch: ["**/*.go"]
+  - name: server
+    run: go run ./other
+    watch: ["**/*.go"]
+`)
+
+		_, err := redo.LoadConfig(filepath.Join(dir, "redo.yaml"))
+		is.True(t, err != nil)
+	})
+
+	t.Run("returns an error for an invalid glob pattern", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "redo.yaml"), `
+commands:
+  - name: server
+    run: go run .
+    watch: ["[unterminated"]
+`)
+
+		_, err := redo.LoadConfig(filepath.Join(dir, "redo.yaml"))
+		is.True(t, err != nil)
+	})
 }
 
 func writeFile(t *testing.T, path, content string) {

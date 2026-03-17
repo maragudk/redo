@@ -3,6 +3,7 @@ package redo
 import (
 	"bytes"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -80,17 +81,30 @@ func TestCommand(t *testing.T) {
 		// Command already exited, stop should not panic or hang
 		cmd.stop()
 	})
+
+	t.Run("stopping a never-started command is a no-op", func(t *testing.T) {
+		var buf safeBuffer
+		cmd := newCommand("idle", "echo nope", &buf)
+
+		// Should not panic or hang
+		cmd.stop()
+	})
 }
 
 // safeBuffer is a concurrency-safe bytes.Buffer for tests.
 type safeBuffer struct {
+	mu  sync.Mutex
 	buf bytes.Buffer
 }
 
 func (s *safeBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.buf.Write(p)
 }
 
 func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.buf.String()
 }

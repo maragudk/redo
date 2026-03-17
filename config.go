@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,15 +43,25 @@ func (c Config) validate() error {
 	if len(c.Commands) == 0 {
 		return fmt.Errorf("no commands defined")
 	}
+	seen := make(map[string]bool)
 	for i, cmd := range c.Commands {
 		if cmd.Name == "" {
 			return fmt.Errorf("command %d: missing name", i)
 		}
+		if seen[cmd.Name] {
+			return fmt.Errorf("command %q: duplicate name", cmd.Name)
+		}
+		seen[cmd.Name] = true
 		if cmd.Run == "" {
 			return fmt.Errorf("command %q: missing run", cmd.Name)
 		}
 		if len(cmd.Watch) == 0 {
 			return fmt.Errorf("command %q: missing watch patterns", cmd.Name)
+		}
+		for _, pattern := range cmd.Watch {
+			if _, err := doublestar.Match(pattern, ""); err != nil {
+				return fmt.Errorf("command %q: invalid watch pattern %q: %w", cmd.Name, pattern, err)
+			}
 		}
 	}
 	return nil
