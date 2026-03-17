@@ -68,7 +68,7 @@ func runWatch() error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
 	r := redo.New(dir, cfg, os.Stdout)

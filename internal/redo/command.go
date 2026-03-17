@@ -12,12 +12,20 @@ import (
 	"time"
 )
 
+// sentinel is a shell wrapper that ensures children are killed when redo dies.
+// It runs the user command in the background, starts a watcher that reads from
+// a pipe (fd 3) held open by redo, and waits for the command to finish.
+// When redo dies (or closes the pipe), read returns and the watcher kills the
+// command. When the command finishes normally, kill 0 cleans up the watcher.
+const sentinel = `eval "$REDO_CMD" & CMD_PID=$!; (read <&3 || true; kill $CMD_PID 2>/dev/null) & wait $CMD_PID 2>/dev/null; kill 0 2>/dev/null`
+
 type command struct {
 	name    string
 	run     string
 	dir     string
 	out     io.Writer
 	logFile *os.File
+	pipe    *os.File
 
 	mu   sync.Mutex
 	cmd  *exec.Cmd
@@ -47,6 +55,12 @@ func (c *command) startLocked() error {
 		c.logFile = nil
 	}
 
+	// Close previous sentinel pipe if any.
+	if c.pipe != nil {
+		_ = c.pipe.Close()
+		c.pipe = nil
+	}
+
 	// Open log file, truncating any previous content.
 	logFile, err := os.Create(filepath.Join(c.dir, c.name+".log"))
 	if err != nil {
@@ -54,8 +68,19 @@ func (c *command) startLocked() error {
 	}
 	c.logFile = logFile
 
-	cmd := exec.Command("sh", "-c", c.run)
+	// Create sentinel pipe. The write end stays open in redo; the read end
+	// is passed to the child as fd 3. When redo exits (for any reason),
+	// the OS closes the write end, which unblocks the child's read and
+	// triggers cleanup of the process group.
+	pipeR, pipeW, err := os.Pipe()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("sh", "-c", sentinel)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = append(os.Environ(), "REDO_CMD="+c.run)
+	cmd.ExtraFiles = []*os.File{pipeR}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -69,8 +94,14 @@ func (c *command) startLocked() error {
 	c.done = make(chan struct{})
 
 	if err := cmd.Start(); err != nil {
+		_ = pipeR.Close()
+		_ = pipeW.Close()
 		return err
 	}
+
+	// Close read end in parent; the child inherited its own copy.
+	_ = pipeR.Close()
+	c.pipe = pipeW
 
 	c.cmd = cmd
 
@@ -115,6 +146,12 @@ func (c *command) stopLocked() {
 		c.cmd = nil
 		return
 	default:
+	}
+
+	// Close sentinel pipe to trigger child cleanup.
+	if c.pipe != nil {
+		_ = c.pipe.Close()
+		c.pipe = nil
 	}
 
 	pid := c.cmd.Process.Pid
