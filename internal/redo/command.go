@@ -4,26 +4,31 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 )
 
 type command struct {
-	name string
-	run  string
-	out  io.Writer
+	name    string
+	run     string
+	dir     string
+	out     io.Writer
+	logFile *os.File
 
 	mu   sync.Mutex
 	cmd  *exec.Cmd
 	done chan struct{}
 }
 
-func newCommand(name, run string, out io.Writer) *command {
+func newCommand(name, run, dir string, out io.Writer) *command {
 	return &command{
 		name: name,
 		run:  run,
+		dir:  dir,
 		out:  out,
 	}
 }
@@ -36,6 +41,19 @@ func (c *command) start() error {
 }
 
 func (c *command) startLocked() error {
+	// Close previous log file if any.
+	if c.logFile != nil {
+		_ = c.logFile.Close()
+		c.logFile = nil
+	}
+
+	// Open log file, truncating any previous content.
+	logFile, err := os.Create(filepath.Join(c.dir, c.name+".log"))
+	if err != nil {
+		return err
+	}
+	c.logFile = logFile
+
 	cmd := exec.Command("sh", "-c", c.run)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -56,8 +74,10 @@ func (c *command) startLocked() error {
 
 	c.cmd = cmd
 
-	go c.prefixLines(stdout)
-	go c.prefixLines(stderr)
+	// Capture logFile reference for goroutines so they don't race with restart.
+	lf := c.logFile
+	go c.prefixLines(stdout, lf)
+	go c.prefixLines(stderr, lf)
 
 	go func() {
 		_ = cmd.Wait()
@@ -67,11 +87,13 @@ func (c *command) startLocked() error {
 	return nil
 }
 
-func (c *command) prefixLines(r io.Reader) {
+func (c *command) prefixLines(r io.Reader, logFile *os.File) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := fmt.Sprintf("[%s] %s\n", c.name, scanner.Text())
-		_, _ = c.out.Write([]byte(line))
+		text := scanner.Text()
+		prefixed := fmt.Sprintf("[%s] %s\n", c.name, text)
+		_, _ = c.out.Write([]byte(prefixed))
+		_, _ = logFile.Write([]byte(text + "\n"))
 	}
 }
 
@@ -113,6 +135,16 @@ func (c *command) stopLocked() {
 	}
 
 	c.cmd = nil
+}
+
+func (c *command) closeLog() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.logFile != nil {
+		_ = c.logFile.Close()
+		c.logFile = nil
+	}
 }
 
 func (c *command) restart() error {

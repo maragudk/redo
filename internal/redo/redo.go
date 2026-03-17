@@ -49,7 +49,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	for _, cfg := range r.config.Commands {
-		cmd := newCommand(cfg.Name, cfg.Run, r.out)
+		cmd := newCommand(cfg.Name, cfg.Run, r.dir, r.out)
 		r.commands = append(r.commands, cmd)
 		r.log("Starting %s: %s", cfg.Name, cfg.Run)
 		if err := cmd.start(); err != nil {
@@ -131,6 +131,7 @@ func (r *Runner) log(format string, args ...any) {
 func (r *Runner) stopAll() {
 	for _, cmd := range r.commands {
 		cmd.stop()
+		cmd.closeLog()
 	}
 }
 

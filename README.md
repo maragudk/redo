@@ -44,7 +44,7 @@ redo
 
 All commands start immediately. When a file matching a command's watch patterns changes, that command is killed and restarted.
 
-Output is prefixed with the command name:
+Output is prefixed with the command name in the terminal:
 
 ```
 [redo] Starting app: go run .
@@ -52,6 +52,8 @@ Output is prefixed with the command name:
 [redo] Restarting app (main.go changed)
 [app] Listening on :8080
 ```
+
+Each command's raw output (no prefix) is also written to `[name].log` in the project root. The log file is truncated on each restart.
 
 ### Multiple commands
 
@@ -79,3 +81,4 @@ commands:
 - Kills the entire process group on restart (no orphan processes)
 - 50ms debounce to coalesce rapid file changes
 - Prefixed output for grep-friendly logs
+- Per-command `[name].log` files with raw output, truncated on restart
